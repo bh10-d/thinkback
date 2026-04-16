@@ -1,0 +1,43 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Topic {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  notes     Note[]
+  blogs     Blog[]
+  createdAt DateTime @default(now())
+}
+
+model Note {
+  id             String    @id @default(uuid())
+  title          String
+  questions      String[]
+  coreIdea       String
+  mistake        String
+  example        String
+  topicId        String?
+  topic          Topic?    @relation(fields: [topicId], references: [id])
+  reviewLevel    Int       @default(0)
+  nextReviewAt   DateTime  @default(now())
+  lastReviewedAt DateTime?
+  createdAt      DateTime  @default(now())
+}
+
+model Blog {
+  id        String   @id @default(uuid())
+  title     String
+  content   String   @default("")
+  slug      String   @unique
+  isPublic  Boolean  @default(false)
+  topicId   String?
+  topic     Topic?   @relation(fields: [topicId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
