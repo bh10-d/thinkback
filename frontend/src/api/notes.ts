@@ -19,8 +19,28 @@ export interface UpdateNotePayload {
   topicId?: string;
 }
 
+export interface NotesListParams {
+  limit?: number;
+  cursor?: string;
+  search?: string;
+  topicId?: string;
+}
+
+export interface NotesListResponse {
+  data: Note[];
+  nextCursor: string | null;
+}
+
 export const notesApi = {
-  getAll: () => api.get<Note[]>('/notes'),
+  getAll: (params: NotesListParams = {}) => {
+    const qs = new URLSearchParams();
+    if (params.limit) qs.set('limit', String(params.limit));
+    if (params.cursor) qs.set('cursor', params.cursor);
+    if (params.search) qs.set('search', params.search);
+    if (params.topicId) qs.set('topicId', params.topicId);
+    const query = qs.toString();
+    return api.get<NotesListResponse>(`/notes${query ? `?${query}` : ''}`);
+  },
   getToday: (topicId?: string) =>
     api.get<TodayResponse>(topicId ? `/notes/today?topicId=${topicId}` : '/notes/today'),
   getById: (id: string) => api.get<Note>(`/notes/${id}`),

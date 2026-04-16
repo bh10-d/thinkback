@@ -1,14 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import {
-  Button, Card, Typography, Tag, Spin, Space,
-  Popconfirm, message, Divider,
-} from 'antd';
-import { EditOutlined, DeleteOutlined, ArrowLeftOutlined, FileTextOutlined } from '@ant-design/icons';
+import { Button, Card, Typography, Tag, Spin, Popconfirm, message, Divider, Grid, Dropdown } from 'antd';
+import { EditOutlined, DeleteOutlined, ArrowLeftOutlined, FileTextOutlined, MoreOutlined } from '@ant-design/icons';
 import { notesApi } from '../api/notes';
 import { Note } from '../types';
 
 const { Title, Text, Paragraph } = Typography;
+const { useBreakpoint } = Grid;
 
 const LEVEL_COLORS: Record<number, string> = { 0: 'default', 1: 'blue', 2: 'cyan', 3: 'green', 4: 'gold' };
 const LEVEL_LABELS: Record<number, string> = { 0: 'New', 1: 'Lv.1', 2: 'Lv.2', 3: 'Lv.3', 4: 'Lv.4' };
@@ -21,6 +19,9 @@ function formatDate(d: string | null) {
 export default function NoteDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const screens = useBreakpoint();
+  const isMobile = !screens.md;
+
   const [note, setNote] = useState<Note | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
@@ -57,42 +58,70 @@ export default function NoteDetail() {
   if (loading) return <Spin style={{ display: 'block', marginTop: 80 }} />;
   if (!note) return <Text type="secondary">Note not found.</Text>;
 
+  const deleteButton = (
+    <Popconfirm
+      title="Delete this note?"
+      description="This cannot be undone."
+      okText="Delete"
+      okType="danger"
+      cancelText="Cancel"
+      onConfirm={handleDelete}
+    >
+      <Button danger icon={<DeleteOutlined />} loading={deleting}>Delete</Button>
+    </Popconfirm>
+  );
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate('/notes')} style={{ color: '#999' }}>
-          Notes
+      {/* ── Top bar ── */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate('/notes')} style={{ color: '#999', flexShrink: 0 }}>
+          {!isMobile && 'Notes'}
         </Button>
-        <Space>
-          <Button icon={<FileTextOutlined />} onClick={handleConvertToBlog}>
-            Convert to Blog
-          </Button>
-          <Button icon={<EditOutlined />} onClick={() => navigate(`/notes/${id}/edit`)}>
-            Edit
-          </Button>
-          <Popconfirm
-            title="Delete this note?"
-            description="This cannot be undone."
-            okText="Delete"
-            okType="danger"
-            cancelText="Cancel"
-            onConfirm={handleDelete}
-          >
-            <Button danger icon={<DeleteOutlined />} loading={deleting}>Delete</Button>
-          </Popconfirm>
-        </Space>
+
+        {isMobile ? (
+          // Mobile: primary Edit button + overflow menu
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Button type="primary" icon={<EditOutlined />} onClick={() => navigate(`/notes/${id}/edit`)}>
+              Edit
+            </Button>
+            <Dropdown
+              menu={{
+                items: [
+                  { key: 'blog', label: 'Convert to Blog', icon: <FileTextOutlined /> },
+                  { key: 'delete', label: <Text type="danger">Delete</Text>, icon: <DeleteOutlined style={{ color: '#ff4d4f' }} />, danger: true },
+                ],
+                onClick: ({ key }) => {
+                  if (key === 'blog') handleConvertToBlog();
+                  if (key === 'delete') handleDelete();
+                },
+              }}
+              trigger={['click']}
+            >
+              <Button icon={<MoreOutlined />} />
+            </Dropdown>
+          </div>
+        ) : (
+          // Desktop: all buttons visible
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Button icon={<FileTextOutlined />} onClick={handleConvertToBlog}>Convert to Blog</Button>
+            <Button icon={<EditOutlined />} onClick={() => navigate(`/notes/${id}/edit`)}>Edit</Button>
+            {deleteButton}
+          </div>
+        )}
       </div>
 
+      {/* ── Content card ── */}
       <Card>
-        <Space direction="vertical" size={20} style={{ width: '100%' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           <div>
             <Title level={2} style={{ margin: 0 }}>{note.title}</Title>
-            <Space style={{ marginTop: 8 }} size={8}>
+            <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {note.topic && <Tag>{note.topic.name}</Tag>}
               <Tag color={LEVEL_COLORS[note.reviewLevel]}>
                 {LEVEL_LABELS[note.reviewLevel] ?? `Lv.${note.reviewLevel}`}
               </Tag>
-            </Space>
+            </div>
           </div>
 
           <Divider style={{ margin: 0 }} />
@@ -137,7 +166,7 @@ export default function NoteDetail() {
 
           <Divider style={{ margin: 0 }} />
 
-          <div style={{ display: 'flex', gap: 32 }}>
+          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
             <div>
               <Text style={{ fontSize: 11, color: '#999', textTransform: 'uppercase', letterSpacing: 1 }}>Last reviewed</Text>
               <div style={{ fontSize: 13, marginTop: 2 }}>{formatDate(note.lastReviewedAt)}</div>
@@ -151,7 +180,7 @@ export default function NoteDetail() {
               <div style={{ fontSize: 13, marginTop: 2 }}>{formatDate(note.createdAt)}</div>
             </div>
           </div>
-        </Space>
+        </div>
       </Card>
     </div>
   );

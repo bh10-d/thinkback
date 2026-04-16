@@ -1,13 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import { Button, Input, Select, Typography, Tag, Spin, Switch, Tooltip, message } from 'antd';
-import {
-  ArrowLeftOutlined,
-  FullscreenOutlined,
-  FullscreenExitOutlined,
-  LinkOutlined,
-  GlobalOutlined,
-} from '@ant-design/icons';
+import { Button, Input, Select, Typography, Tag, Spin, Switch, Tooltip, message, Grid } from 'antd';
+import { ArrowLeftOutlined, FullscreenOutlined, FullscreenExitOutlined, LinkOutlined, GlobalOutlined, EyeOutlined, EditOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -17,11 +11,11 @@ import { topicsApi } from '../api/topics';
 import { Topic } from '../types';
 
 const { Text } = Typography;
+const { useBreakpoint } = Grid;
 
-// Editor constants — must match between textarea and backdrop
 const EDITOR_FONT_SIZE = 14;
 const EDITOR_LINE_HEIGHT = 1.75;
-const EDITOR_PADDING = 24;
+const EDITOR_PADDING = 20;
 const EDITOR_FONT = "'JetBrains Mono', 'Fira Code', monospace";
 
 type SaveStatus = 'saved' | 'unsaved' | 'saving';
@@ -31,8 +25,6 @@ interface LocationState {
   content?: string;
   topicId?: string;
 }
-
-// ── Utilities ────────────────────────────────────────────
 
 function autoFormat(text: string): string {
   return text.replace(/^(#{1,6})\s*(.*)/gm, (_, hashes, rest) => {
@@ -45,12 +37,13 @@ function getCaretLine(value: string, selStart: number): number {
   return value.substring(0, selStart).split('\n').length - 1;
 }
 
-// ── Component ────────────────────────────────────────────
-
 export default function BlogEditor() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
+  const screens = useBreakpoint();
+  const isMobile = !screens.md;
+
   const isNew = !id;
   const fromNote = location.state as LocationState | null;
 
@@ -62,6 +55,7 @@ export default function BlogEditor() {
   const [slug, setSlug] = useState('');
   const [saveStatus, setSaveStatus] = useState<SaveStatus>(isNew ? 'unsaved' : 'saved');
   const [focusMode, setFocusMode] = useState(false);
+  const [mobileTab, setMobileTab] = useState<'write' | 'preview'>('write');
   const [loading, setLoading] = useState(!isNew);
   const [currentLine, setCurrentLine] = useState(0);
 
@@ -70,7 +64,7 @@ export default function BlogEditor() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
 
-  // ── Load data ────────────────────────────────────────
+  // ── Load ─────────────────────────────────────────────
 
   useEffect(() => {
     topicsApi.getAll().then(setTopics).catch(() => {});
@@ -98,11 +92,9 @@ export default function BlogEditor() {
       .finally(() => setLoading(false));
   }, [id, isNew]);
 
-  // ── Save logic ───────────────────────────────────────
+  // ── Save ─────────────────────────────────────────────
 
-  const save = useCallback(async (
-    t: string, c: string, tid: string | undefined, pub?: boolean,
-  ) => {
+  const save = useCallback(async (t: string, c: string, tid: string | undefined, pub?: boolean) => {
     if (!t.trim()) return;
     setSaveStatus('saving');
     try {
@@ -127,15 +119,12 @@ export default function BlogEditor() {
     }
   }, []);
 
-  const scheduleAutoSave = useCallback((
-    t: string, c: string, tid: string | undefined,
-  ) => {
+  const scheduleAutoSave = useCallback((t: string, c: string, tid: string | undefined) => {
     setSaveStatus('unsaved');
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => save(t, c, tid), 3000);
   }, [save]);
 
-  // Ctrl+S
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
@@ -150,7 +139,7 @@ export default function BlogEditor() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [title, content, topicId, save]);
 
-  // ── Scroll sync (backdrop ↔ textarea) ───────────────
+  // ── Scroll sync ──────────────────────────────────────
 
   function syncScroll() {
     if (backdropRef.current && textareaRef.current) {
@@ -185,12 +174,11 @@ export default function BlogEditor() {
     if (ta) setCurrentLine(getCaretLine(ta.value, ta.selectionStart));
   }
 
-  // Smart Enter — list continuation
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key !== 'Enter') return;
     const ta = e.currentTarget;
     const { selectionStart, selectionEnd, value } = ta;
-    if (selectionStart !== selectionEnd) return; // has selection, let default handle
+    if (selectionStart !== selectionEnd) return;
 
     const lineStart = value.lastIndexOf('\n', selectionStart - 1) + 1;
     const lineText = value.substring(lineStart, selectionStart);
@@ -199,16 +187,13 @@ export default function BlogEditor() {
 
     e.preventDefault();
     const [, indent, itemContent] = listMatch;
-
     let newValue: string;
     let newCursor: number;
 
     if (!itemContent.trim()) {
-      // Empty list item → exit list, remove the dash
       newValue = value.substring(0, lineStart) + value.substring(selectionStart);
       newCursor = lineStart;
     } else {
-      // Continue list
       const insertion = `\n${indent}- `;
       newValue = value.substring(0, selectionStart) + insertion + value.substring(selectionStart);
       newCursor = selectionStart + insertion.length;
@@ -229,178 +214,195 @@ export default function BlogEditor() {
   }
 
   function handleCopyLink() {
-    const url = `${window.location.origin}/p/${slug}`;
-    navigator.clipboard.writeText(url).then(() => message.success('Link copied!'));
+    navigator.clipboard.writeText(`${window.location.origin}/p/${slug}`)
+      .then(() => message.success('Link copied!'));
   }
 
-  // ── Render ────────────────────────────────────────────
+  // ── Derived ──────────────────────────────────────────
 
   const lineHeightPx = EDITOR_FONT_SIZE * EDITOR_LINE_HEIGHT;
   const lines = content.split('\n');
-
   const statusBadge = {
-    saved: { color: 'success', text: 'Saved' },
-    saving: { color: 'warning', text: 'Saving…' },
-    unsaved: { color: 'default', text: 'Unsaved' },
+    saved:   { color: 'success',  text: 'Saved' },
+    saving:  { color: 'warning',  text: 'Saving…' },
+    unsaved: { color: 'default',  text: 'Unsaved' },
   }[saveStatus];
+
+  // Responsive offset: undo the Content padding so editor fills the viewport
+  const contentPadH = isMobile ? 16 : 24;
+  const contentPadTop = isMobile ? 20 : 40;
+  // Header 52px + bottom nav on mobile 60px
+  const reservedHeight = isMobile ? 52 + 60 : 52;
 
   if (loading) return <Spin style={{ display: 'block', marginTop: 80 }} />;
 
   return (
     <div style={{
-      display: 'flex', flexDirection: 'column',
-      height: 'calc(100vh - 56px)',
-      margin: '-40px -24px',
+      display: 'flex',
+      flexDirection: 'column',
+      height: `calc(100vh - ${reservedHeight}px)`,
+      margin: `-${contentPadTop}px -${contentPadH}px`,
     }}>
       {/* ── Toolbar ── */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 10,
-        padding: '8px 16px', background: '#fff',
-        borderBottom: '1px solid #f0f0f0', flexShrink: 0, flexWrap: 'wrap',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: '6px 12px',
+        background: '#fff',
+        borderBottom: '1px solid #f0f0f0',
+        flexShrink: 0,
+        flexWrap: 'wrap',
+        minHeight: 48,
       }}>
-        <Button
-          type="text"
-          icon={<ArrowLeftOutlined />}
-          onClick={() => navigate('/blog')}
-          style={{ color: '#999' }}
-        />
+        <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate('/blog')} style={{ color: '#999', flexShrink: 0 }} />
 
         <Input
           value={title}
           onChange={(e) => handleTitleChange(e.target.value)}
           placeholder="Post title..."
-          bordered={false}
-          style={{ flex: 1, minWidth: 120, fontSize: 15, fontWeight: 600, padding: '0 4px' }}
+          variant="borderless"
+          style={{ flex: 1, minWidth: 80, fontSize: 15, fontWeight: 600, padding: '0 4px' }}
         />
 
-        <Select
-          placeholder="Topic"
-          allowClear
-          value={topicId}
-          onChange={(v) => { setTopicId(v); scheduleAutoSave(title, content, v); }}
-          options={topics.map((t) => ({ value: t.id, label: t.name }))}
-          style={{ width: 140 }}
-          size="small"
-        />
-
-        <Tag color={statusBadge.color as 'success' | 'warning' | 'default'}>
+        <Tag color={statusBadge.color as 'success' | 'warning' | 'default'} style={{ flexShrink: 0 }}>
           {statusBadge.text}
         </Tag>
 
-        {/* Public toggle */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        {!isMobile && (
+          <Select
+            placeholder="Topic"
+            allowClear
+            value={topicId}
+            onChange={(v) => { setTopicId(v); scheduleAutoSave(title, content, v); }}
+            options={topics.map((t) => ({ value: t.id, label: t.name }))}
+            style={{ width: 130 }}
+            size="small"
+          />
+        )}
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
           <GlobalOutlined style={{ color: isPublic ? '#52c41a' : '#ccc', fontSize: 13 }} />
-          <Tooltip title={isPublic ? 'Public — anyone with link can view' : 'Private'}>
+          <Tooltip title={isPublic ? 'Public' : 'Private'}>
             <Switch size="small" checked={isPublic} onChange={handlePublicToggle} />
           </Tooltip>
         </div>
 
-        {/* Copy link — only when public */}
         {isPublic && slug && (
           <Tooltip title={`${window.location.origin}/p/${slug}`}>
-            <Button size="small" icon={<LinkOutlined />} onClick={handleCopyLink}>
-              Copy Link
+            <Button size="small" icon={<LinkOutlined />} onClick={handleCopyLink} style={{ flexShrink: 0 }}>
+              {!isMobile && 'Copy Link'}
             </Button>
           </Tooltip>
         )}
 
-        <Tooltip title={focusMode ? 'Show preview (Esc)' : 'Focus mode'}>
+        {/* Desktop: focus mode toggle */}
+        {!isMobile && (
+          <Tooltip title={focusMode ? 'Show preview' : 'Focus mode'}>
+            <Button
+              type="text"
+              icon={focusMode ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
+              onClick={() => setFocusMode((f) => !f)}
+              style={{ color: '#999' }}
+            />
+          </Tooltip>
+        )}
+
+        {/* Mobile: write / preview tab */}
+        {isMobile && (
           <Button
             type="text"
-            icon={focusMode ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
-            onClick={() => setFocusMode((f) => !f)}
-            style={{ color: '#999' }}
+            icon={mobileTab === 'write' ? <EyeOutlined /> : <EditOutlined />}
+            onClick={() => setMobileTab((t) => t === 'write' ? 'preview' : 'write')}
+            style={{ color: '#999', flexShrink: 0 }}
           />
-        </Tooltip>
-
-        <Text type="secondary" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>Ctrl+S</Text>
+        )}
       </div>
 
       {/* ── Editor + Preview ── */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
 
-        {/* Editor pane */}
-        <div style={{
-          flex: focusMode ? 1 : '0 0 50%',
-          borderRight: focusMode ? 'none' : '1px solid #f0f0f0',
-          position: 'relative',
-          background: '#fff',
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-        }}>
-          {/* Line highlight backdrop */}
-          <div
-            ref={backdropRef}
-            aria-hidden="true"
-            style={{
-              position: 'absolute',
-              top: 0, left: 0, right: 0, bottom: 0,
-              padding: EDITOR_PADDING,
-              overflow: 'hidden',
-              pointerEvents: 'none',
-              fontFamily: EDITOR_FONT,
-              fontSize: EDITOR_FONT_SIZE,
-              lineHeight: EDITOR_LINE_HEIGHT,
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-            }}
-          >
-            {lines.map((_, i) => (
-              <div
-                key={i}
-                style={{
-                  minHeight: lineHeightPx,
-                  borderRadius: 3,
-                  background: i === currentLine ? 'rgba(0,0,0,0.04)' : 'transparent',
-                  marginLeft: -6,
-                  marginRight: -6,
-                  paddingLeft: 6,
-                  paddingRight: 6,
-                }}
-              >
-                {'\u00a0'}
-              </div>
-            ))}
-          </div>
+        {/* Editor pane — hidden on mobile when previewing */}
+        {(!isMobile || mobileTab === 'write') && (
+          <div style={{
+            flex: (!isMobile && !focusMode) ? '0 0 50%' : 1,
+            borderRight: (!isMobile && !focusMode) ? '1px solid #f0f0f0' : 'none',
+            position: 'relative',
+            background: '#fff',
+            overflow: 'hidden',
+          }}>
+            {/* Line highlight backdrop */}
+            <div
+              ref={backdropRef}
+              aria-hidden="true"
+              style={{
+                position: 'absolute',
+                top: 0, left: 0, right: 0, bottom: 0,
+                padding: EDITOR_PADDING,
+                overflow: 'hidden',
+                pointerEvents: 'none',
+                fontFamily: EDITOR_FONT,
+                fontSize: EDITOR_FONT_SIZE,
+                lineHeight: EDITOR_LINE_HEIGHT,
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+              }}
+            >
+              {lines.map((_, i) => (
+                <div
+                  key={i}
+                  style={{
+                    minHeight: lineHeightPx,
+                    borderRadius: 3,
+                    background: i === currentLine ? 'rgba(0,0,0,0.04)' : 'transparent',
+                    marginLeft: -4,
+                    marginRight: -4,
+                    paddingLeft: 4,
+                    paddingRight: 4,
+                  }}
+                >
+                  {'\u00a0'}
+                </div>
+              ))}
+            </div>
 
-          {/* Textarea */}
-          <textarea
-            ref={textareaRef}
-            value={content}
-            onChange={(e) => handleContentChange(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onBlur={handleBlur}
-            onClick={handleCaretMove}
-            onKeyUp={handleCaretMove}
-            onScroll={syncScroll}
-            placeholder={`Write in plain text or markdown...\n\n## Heading\n\n- list item\n\n\`\`\`js\nconsole.log('hello')\n\`\`\``}
-            autoFocus={isNew}
-            style={{
-              position: 'absolute',
-              top: 0, left: 0, right: 0, bottom: 0,
-              width: '100%',
-              height: '100%',
-              border: 'none',
-              outline: 'none',
-              resize: 'none',
-              padding: EDITOR_PADDING,
-              fontSize: EDITOR_FONT_SIZE,
-              fontFamily: EDITOR_FONT,
-              lineHeight: EDITOR_LINE_HEIGHT,
-              color: '#333',
-              background: 'transparent',
-              caretColor: '#1d1d1d',
-            }}
-          />
-        </div>
+            <textarea
+              ref={textareaRef}
+              value={content}
+              onChange={(e) => handleContentChange(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onBlur={handleBlur}
+              onClick={handleCaretMove}
+              onKeyUp={handleCaretMove}
+              onScroll={syncScroll}
+              placeholder={`Write in markdown...\n\n## Heading\n\n- list item`}
+              autoFocus={isNew}
+              style={{
+                position: 'absolute',
+                top: 0, left: 0, right: 0, bottom: 0,
+                width: '100%',
+                height: '100%',
+                border: 'none',
+                outline: 'none',
+                resize: 'none',
+                padding: EDITOR_PADDING,
+                fontSize: EDITOR_FONT_SIZE,
+                fontFamily: EDITOR_FONT,
+                lineHeight: EDITOR_LINE_HEIGHT,
+                color: '#333',
+                background: 'transparent',
+                caretColor: '#1d1d1d',
+              }}
+            />
+          </div>
+        )}
 
         {/* Preview pane */}
-        {!focusMode && (
+        {(!isMobile && !focusMode) || (isMobile && mobileTab === 'preview') ? (
           <div style={{
-            flex: '0 0 50%',
+            flex: isMobile ? 1 : '0 0 50%',
             overflow: 'auto',
-            padding: '24px 32px',
+            padding: isMobile ? '16px' : '24px 32px',
             background: '#fafafa',
           }}>
             {content.trim() ? (
@@ -432,40 +434,22 @@ export default function BlogEditor() {
                 </ReactMarkdown>
               </div>
             ) : (
-              <Text type="secondary" style={{ fontSize: 14 }}>
-                Preview will appear here...
-              </Text>
+              <Text type="secondary" style={{ fontSize: 14 }}>Preview will appear here...</Text>
             )}
           </div>
-        )}
+        ) : null}
       </div>
 
-      {/* Markdown styles */}
       <style>{`
-        .md-preview {
-          font-size: 16px;
-          line-height: 1.7;
-          color: #1d1d1d;
-        }
+        .md-preview { font-size: 16px; line-height: 1.7; color: #1d1d1d; }
         .md-preview h1 { font-size: 1.8em; font-weight: 700; margin: 1.5em 0 0.5em; color: #111; }
         .md-preview h2 { font-size: 1.35em; font-weight: 600; margin: 1.5em 0 0.4em; color: #111; }
         .md-preview h3 { font-size: 1.1em; font-weight: 600; margin: 1.2em 0 0.4em; color: #111; }
         .md-preview p { margin-bottom: 1em; }
         .md-preview ul, .md-preview ol { padding-left: 1.6em; margin-bottom: 1em; }
         .md-preview li { margin-bottom: 0.3em; }
-        .md-preview pre {
-          background: #f5f5f5 !important;
-          padding: 12px 16px !important;
-          border-radius: 8px !important;
-          overflow: auto;
-          margin-bottom: 1em;
-        }
-        .md-preview blockquote {
-          border-left: 3px solid #d9d9d9;
-          margin: 0 0 1em;
-          padding: 4px 0 4px 1em;
-          color: #666;
-        }
+        .md-preview pre { background: #f5f5f5 !important; padding: 12px 16px !important; border-radius: 8px !important; overflow: auto; margin-bottom: 1em; }
+        .md-preview blockquote { border-left: 3px solid #d9d9d9; margin: 0 0 1em; padding: 4px 0 4px 1em; color: #666; }
         .md-preview table { border-collapse: collapse; width: 100%; margin-bottom: 1em; }
         .md-preview th, .md-preview td { border: 1px solid #e8e8e8; padding: 7px 12px; }
         .md-preview th { background: #fafafa; font-weight: 600; }

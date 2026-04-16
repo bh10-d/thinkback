@@ -11,20 +11,20 @@ function addDays(date: Date, days: number): Date {
   return result;
 }
 
-function getNextReview(level: number, result: ReviewResult): { newLevel: number; nextReviewAt: Date } {
+function getNextReview(level: number, result: ReviewResult) {
   const now = new Date();
-
   if (result === 'remembered') {
     const newLevel = Math.min(level + 1, MAX_LEVEL);
     return { newLevel, nextReviewAt: addDays(now, LEVEL_DAYS[newLevel]) };
   }
-
   if (result === 'partially') {
     return { newLevel: level, nextReviewAt: addDays(now, 1) };
   }
-
-  // forgot
   return { newLevel: 0, nextReviewAt: addDays(now, 1) };
+}
+
+function todayStr(): string {
+  return new Date().toISOString().slice(0, 10);
 }
 
 @Injectable()
@@ -37,13 +37,18 @@ export class ReviewService {
 
     const { newLevel, nextReviewAt } = getNextReview(note.reviewLevel, dto.result);
 
-    return this.prisma.note.update({
-      where: { id: dto.noteId },
-      data: {
-        reviewLevel: newLevel,
-        nextReviewAt,
-        lastReviewedAt: new Date(),
-      },
-    });
+    const [updatedNote] = await this.prisma.$transaction([
+      this.prisma.note.update({
+        where: { id: dto.noteId },
+        data: { reviewLevel: newLevel, nextReviewAt, lastReviewedAt: new Date() },
+      }),
+      this.prisma.dailyReview.upsert({
+        where: { date: todayStr() },
+        create: { date: todayStr(), count: 1 },
+        update: { count: { increment: 1 } },
+      }),
+    ]);
+
+    return updatedNote;
   }
 }

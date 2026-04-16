@@ -3,6 +3,18 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateNoteDto } from './dto/create-note.dto';
 import { UpdateNoteDto } from './dto/update-note.dto';
 
+export interface NotesListParams {
+  limit?: number;
+  cursor?: string;   // ISO string of createdAt of last note fetched
+  search?: string;   // search title + coreIdea
+  topicId?: string;
+}
+
+export interface NotesListResult {
+  data: object[];
+  nextCursor: string | null;
+}
+
 @Injectable()
 export class NotesService {
   constructor(private prisma: PrismaService) {}
@@ -14,11 +26,38 @@ export class NotesService {
     });
   }
 
-  async findAll() {
-    return this.prisma.note.findMany({
+  async findAll(params: NotesListParams = {}): Promise<NotesListResult> {
+    const { limit = 20, cursor, search, topicId } = params;
+
+    const where: Record<string, unknown> = {};
+
+    if (topicId) where.topicId = topicId;
+
+    if (search) {
+      where.OR = [
+        { title: { contains: search, mode: 'insensitive' } },
+        { coreIdea: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    if (cursor) {
+      where.createdAt = { lt: new Date(cursor) };
+    }
+
+    const notes = await this.prisma.note.findMany({
+      where,
       orderBy: { createdAt: 'desc' },
+      take: limit + 1,
       include: { topic: true },
     });
+
+    let nextCursor: string | null = null;
+    if (notes.length > limit) {
+      notes.pop();
+      nextCursor = notes[notes.length - 1].createdAt.toISOString();
+    }
+
+    return { data: notes, nextCursor };
   }
 
   async findOne(id: string) {

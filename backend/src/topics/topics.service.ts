@@ -16,11 +16,25 @@ export class TopicsService {
     return this.prisma.topic.findMany({ orderBy: { name: 'asc' } });
   }
 
-  async remove(id: string) {
+  async rename(id: string, name: string) {
     const topic = await this.prisma.topic.findUnique({ where: { id } });
     if (!topic) throw new NotFoundException('Topic not found');
-    // Unlink notes before deleting
-    await this.prisma.note.updateMany({ where: { topicId: id }, data: { topicId: null } });
+    const conflict = await this.prisma.topic.findUnique({ where: { name } });
+    if (conflict && conflict.id !== id) throw new ConflictException('Topic name already exists');
+    return this.prisma.topic.update({ where: { id }, data: { name } });
+  }
+
+  async remove(id: string, mode: 'move' | 'delete' = 'move') {
+    const topic = await this.prisma.topic.findUnique({ where: { id } });
+    if (!topic) throw new NotFoundException('Topic not found');
+
+    if (mode === 'delete') {
+      await this.prisma.note.deleteMany({ where: { topicId: id } });
+    } else {
+      await this.prisma.note.updateMany({ where: { topicId: id }, data: { topicId: null } });
+    }
+
+    await this.prisma.blog.updateMany({ where: { topicId: id }, data: { topicId: null } });
     return this.prisma.topic.delete({ where: { id } });
   }
 }

@@ -12,15 +12,25 @@ export class NotesController {
     return this.notesService.create(dto);
   }
 
-  // 'today' must come before ':id' to avoid route conflict
+  // 'today' must stay before ':id'
   @Get('today')
   findToday(@Query('topicId') topicId?: string) {
     return this.notesService.findToday(topicId);
   }
 
   @Get()
-  findAll() {
-    return this.notesService.findAll();
+  findAll(
+    @Query('limit') limit?: string,
+    @Query('cursor') cursor?: string,
+    @Query('search') search?: string,
+    @Query('topicId') topicId?: string,
+  ) {
+    return this.notesService.findAll({
+      limit: limit ? parseInt(limit, 10) : 20,
+      cursor,
+      search,
+      topicId,
+    });
   }
 
   @Get(':id')

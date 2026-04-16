@@ -6,7 +6,7 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   app.enableCors({
-    origin: 'http://localhost:5173',
+    origin: ['http://localhost:5173', 'http://192.168.100.235:5173', 'https://thinkback.buiduchieu.id.vn'],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   });
 
